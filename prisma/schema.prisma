@@ -1,0 +1,105 @@
+// AI Life Admin - Database Schema
+// https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// User - synced with Clerk, stores app-specific data
+model User {
+  id        String   @id @default(cuid())
+  clerkId   String   @unique
+  email     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  emailMessages  EmailMessage[]
+  subscriptions  Subscription[]
+  reminders      Reminder[]
+  aiInsights     AIInsight[]
+  gmailTokens    GmailToken?
+}
+
+// OAuth tokens for Gmail API (encrypted in production)
+model GmailToken {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken  String
+  refreshToken String
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Email metadata only - never full content
+model EmailMessage {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gmailId      String
+  threadId     String
+  sender       String
+  subject      String
+  snippet      String   @db.Text
+  receivedAt   DateTime
+  classification String? // subscription | bill | appointment | important | personal | irrelevant
+  classificationData Json? // Structured AI output (confidence, price, etc.)
+  processedAt  DateTime?
+  createdAt    DateTime @default(now())
+
+  subscriptions Subscription[]
+  reminders     Reminder[]
+
+  @@unique([userId, gmailId])
+  @@index([userId])
+  @@index([userId, classification])
+}
+
+model Subscription {
+  id                  String   @id @default(cuid())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name                String
+  estimatedPrice      Float?
+  billingFrequency    String?  // monthly | yearly | weekly
+  lastBillingDate     DateTime?
+  sourceEmailId       String?
+  sourceEmail         EmailMessage? @relation(fields: [sourceEmailId], references: [id], onDelete: SetNull)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model Reminder {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  dueDate     DateTime
+  sourceEmailId String?
+  sourceEmail   EmailMessage? @relation(fields: [sourceEmailId], references: [id], onDelete: SetNull)
+  completed   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, dueDate])
+}
+
+model AIInsight {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  insightText String   @db.Text
+  insightType String?  // subscription_summary | reminder | important_email | general
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+}
